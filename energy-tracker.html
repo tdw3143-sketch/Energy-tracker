@@ -143,7 +143,8 @@ const HISTORICAL_ELEC = [
   ['2025-02-01',69368],['2025-03-01',69470],['2025-04-01',69546],
   ['2025-05-01',69635],['2025-06-01',69736],['2025-07-01',69834],
   ['2025-08-01',69925],['2025-09-01',70027],['2025-10-01',70106],
-  ['2025-11-01',70225],
+  ['2025-11-01',70225],['2025-11-30',70351],['2025-12-31',70486],
+  ['2026-01-31',70621],['2026-02-28',70742],['2026-03-28',70864],
 ].map(([date, elec], i) => ({
   id: `hist-e${i}`, date, gasReading: null,
   electricityReading: elec, source: 'import',
@@ -163,10 +164,11 @@ function loadReadings() {
     const stored = localStorage.getItem(RK);
     if (stored) {
       const parsed = sortR(JSON.parse(stored));
-      // Migration: if no electricity readings exist yet, merge them in
-      const hasElec = parsed.some(r => r.electricityReading !== null);
-      if (!hasElec) {
-        const merged = sortR([...parsed, ...HISTORICAL_ELEC]);
+      // Always merge any new HISTORICAL entries not yet in localStorage (matched by id)
+      const ids = new Set(parsed.map(r => r.id));
+      const newEntries = HISTORICAL.filter(r => !ids.has(r.id));
+      if (newEntries.length) {
+        const merged = sortR([...parsed, ...newEntries]);
         saveReadings(merged);
         return merged;
       }
@@ -538,8 +540,8 @@ function History({readings,settings,onDelete}){
     <div class="table-wrap">
       <table class="data-table">
         <thead><tr>
-          <th>Date</th><th>Gas m³</th>${hasElec?html`<th>Elec kWh</th>`:null}
-          <th>Used m³</th>${hasElec?html`<th>Used kWh</th>`:null}
+          <th>Date</th><th>Gas m³</th><th>Used m³</th>
+          ${hasElec?html`<th>Elec kWh</th><th>Used kWh</th>`:null}
           ${showCosts?html`<th>Cost</th>`:null}
           <th>Src</th><th></th>
         </tr></thead>
@@ -556,9 +558,11 @@ function History({readings,settings,onDelete}){
             return html`<tr key=${r.id}>
               <td class="td-date">${r.date}</td>
               <td class="td-num">${r.gasReading!==null?r.gasReading.toLocaleString('nl-NL',{minimumFractionDigits:3,maximumFractionDigits:3}):'—'}</td>
-              ${hasElec?html`<td class="td-num">${r.electricityReading!==null?r.electricityReading.toLocaleString('nl-NL'):'—'}</td>`:null}
               <td class="td-gas">${used?.g!=null?`+${fmtM3(used.g)}`:'—'}</td>
-              ${hasElec?html`<td class="td-elec">${used?.el!=null?`+${fmtKWh(used.el)}`:'—'}</td>`:null}
+              ${hasElec?html`
+                <td class="td-num">${r.electricityReading!==null?r.electricityReading.toLocaleString('nl-NL'):'—'}</td>
+                <td class="td-elec">${used?.el!=null?`+${fmtKWh(used.el)}`:'—'}</td>
+              `:null}
               ${showCosts?html`<td class="td-cost">${used?(used.g!==null||used.el!==null)?fmtEur(used.cost):'—':'—'}</td>`:null}
               <td>${r.source==='photo'?'📷':r.source==='import'?'📥':'✏️'}</td>
               <td>${confirmId===r.id
