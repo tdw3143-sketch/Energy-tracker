@@ -530,8 +530,24 @@ function History({readings,settings,onDelete}){
   const [confirmId,setConfirmId]=useState(null);
   const [showCosts,setShowCosts]=useState(true);
   if(!readings.length)return html`<div class="page"><h1 class="page-title">History</h1><div class="empty-state"><div class="empty-icon">📋</div><p>No readings yet.</p></div></div>`;
-  const rev=[...readings].reverse();
+
   const hasElec=readings.some(r=>r.electricityReading!==null);
+  const gasR=readings.filter(r=>r.gasReading!==null);
+  const elecR=readings.filter(r=>r.electricityReading!==null);
+
+  // Last electricity reading at or before a given date
+  function elecAt(date){ const m=elecR.filter(e=>e.date<=date); return m.length?m[m.length-1]:null; }
+
+  // One row per gas reading; electricity usage = delta between nearest elec readings bracketing the same period
+  const rows=[...gasR].reverse().map((r,i,arr)=>{
+    const prev=arr[i+1]||null;
+    const g=prev?Math.max(0,r.gasReading-prev.gasReading):null;
+    const currElec=elecAt(r.date), prevElec=prev?elecAt(prev.date):null;
+    const el=(currElec&&prevElec)?Math.max(0,currElec.electricityReading-prevElec.electricityReading):null;
+    const cost=(g||0)*settings.gasRate+(el||0)*settings.electricityRate;
+    return {r,g,el,cost};
+  });
+
   return html`<div class="page">
     <div class="page-header">
       <h1 class="page-title">Reading History</h1>
@@ -541,43 +557,30 @@ function History({readings,settings,onDelete}){
       <table class="data-table">
         <thead><tr>
           <th>Date</th><th>Gas m³</th><th>Used m³</th>
-          ${hasElec?html`<th>Elec kWh</th><th>Used kWh</th>`:null}
+          ${hasElec?html`<th>Used kWh</th>`:null}
           ${showCosts?html`<th>Cost</th>`:null}
           <th>Src</th><th></th>
         </tr></thead>
         <tbody>
-          ${rev.map(r=>{
-            const idx=readings.indexOf(r);
-            let used=null;
-            if(idx>0){
-              const p=readings[idx-1];
-              const g=(r.gasReading!==null&&p.gasReading!==null)?Math.max(0,r.gasReading-p.gasReading):null;
-              const el=(p.electricityReading!==null&&r.electricityReading!==null)?Math.max(0,r.electricityReading-p.electricityReading):null;
-              used={g,el,cost:(g!==null?g*settings.gasRate:0)+(el!==null?el*settings.electricityRate:0)};
-            }
-            return html`<tr key=${r.id}>
-              <td class="td-date">${r.date}</td>
-              <td class="td-num">${r.gasReading!==null?r.gasReading.toLocaleString('nl-NL',{minimumFractionDigits:3,maximumFractionDigits:3}):'—'}</td>
-              <td class="td-gas">${used?.g!=null?`+${fmtM3(used.g)}`:'—'}</td>
-              ${hasElec?html`
-                <td class="td-num">${r.electricityReading!==null?r.electricityReading.toLocaleString('nl-NL'):'—'}</td>
-                <td class="td-elec">${used?.el!=null?`+${fmtKWh(used.el)}`:'—'}</td>
-              `:null}
-              ${showCosts?html`<td class="td-cost">${used?(used.g!==null||used.el!==null)?fmtEur(used.cost):'—':'—'}</td>`:null}
-              <td>${r.source==='photo'?'📷':r.source==='import'?'📥':'✏️'}</td>
-              <td>${confirmId===r.id
-                ?html`<span class="confirm-row">
-                    <button class="btn btn-danger btn-sm" onClick=${()=>{onDelete(r.id);setConfirmId(null)}}>Delete</button>
-                    <button class="btn btn-ghost btn-sm" onClick=${()=>setConfirmId(null)}>Cancel</button>
-                  </span>`
-                :html`<button class="btn btn-ghost btn-sm" onClick=${()=>setConfirmId(r.id)}>🗑</button>`}
-              </td>
-            </tr>`;
-          })}
+          ${rows.map(({r,g,el,cost})=>html`<tr key=${r.id}>
+            <td class="td-date">${r.date}</td>
+            <td class="td-num">${r.gasReading.toLocaleString('nl-NL',{minimumFractionDigits:3,maximumFractionDigits:3})}</td>
+            <td class="td-gas">${g!=null?`+${fmtM3(g)}`:'—'}</td>
+            ${hasElec?html`<td class="td-elec">${el!=null?`+${fmtKWh(el)}`:'—'}</td>`:null}
+            ${showCosts?html`<td class="td-cost">${g!=null?fmtEur(cost):'—'}</td>`:null}
+            <td>${r.source==='photo'?'📷':r.source==='import'?'📥':'✏️'}</td>
+            <td>${confirmId===r.id
+              ?html`<span class="confirm-row">
+                  <button class="btn btn-danger btn-sm" onClick=${()=>{onDelete(r.id);setConfirmId(null)}}>Delete</button>
+                  <button class="btn btn-ghost btn-sm" onClick=${()=>setConfirmId(null)}>Cancel</button>
+                </span>`
+              :html`<button class="btn btn-ghost btn-sm" onClick=${()=>setConfirmId(r.id)}>🗑</button>`}
+            </td>
+          </tr>`)}
         </tbody>
       </table>
     </div>
-    <p class="table-meta">${readings.length} readings · ${readings[0].date} to ${readings[readings.length-1].date}</p>
+    <p class="table-meta">${gasR.length} gas readings · ${gasR[0].date} to ${gasR[gasR.length-1].date}</p>
   </div>`;
 }
 
